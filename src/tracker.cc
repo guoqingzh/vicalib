@@ -72,7 +72,9 @@ int main(int argc, char *argv[])
   // parse uri, init camera stream
   hal::Camera camera = hal::Camera( hal::Uri(FLAGS_cam) );
   std::shared_ptr<hal::ImageArray> images = hal::ImageArray::Create();
+  std::cout << "tracker: get width" << std::endl;
   const int width =  camera.Width();
+  std::cout << "tracker: get height" << std::endl;
   const int height = camera.Height();
   pangolin::GlTexture imageTexture(width,height,GL_RGB,false,0,GL_LUMINANCE,GL_UNSIGNED_BYTE);
 

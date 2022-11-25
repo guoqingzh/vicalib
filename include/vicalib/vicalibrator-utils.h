@@ -54,7 +54,7 @@ static const double kTestingEps = 1e-9;
 // Transform a 4x1 (homogenous point) with an SE3.
 template<typename Scalar = double>
 inline Eigen::Matrix<Scalar, 4, 1> MultHomogeneous(
-    const Sophus::SE3Group<Scalar>& lhs,
+    const Sophus::SE3<Scalar>& lhs,
     const Eigen::Matrix<Scalar, 4, 1>& rhs) {
   Eigen::Matrix<Scalar, 4, 1> out;
   out.template head<3>() = lhs.so3()
@@ -83,10 +83,10 @@ inline Scalar powi(const Scalar x, const int y) {
 
 // this function implements d vee(log(A * exp(x) * B) ) / dx,which is in R^{6x6}
 template<typename Scalar = double>
-inline Eigen::Matrix<Scalar, 6, 6> dLog_dX(const Sophus::SE3Group<Scalar>& a,
-                                           const Sophus::SE3Group<Scalar>& b) {
+inline Eigen::Matrix<Scalar, 6, 6> dLog_dX(const Sophus::SE3<Scalar>& a,
+                                           const Sophus::SE3<Scalar>& b) {
   const Eigen::Matrix<Scalar, 6, 1> d_2 =
-      Sophus::SE3Group<Scalar>::log(a * b) / 2;
+      Sophus::SE3<Scalar>::log(a * b) / 2;
   const Scalar d1 = d_2[3], d2 = d_2[4], d3 = d_2[5], dx = d_2[0], dy = d_2[1],
       dz = d_2[2];
   // this is using the 2nd order cbh expansion, to evaluate
@@ -259,8 +259,8 @@ inline Eigen::Matrix<Scalar, 3, 4> dqx_dq(
 // comprising of 3 translation and 4 quaternion terms
 template<typename Scalar = double>
 inline Eigen::Matrix<Scalar, 7, 7> dt1t2_dt1(
-    const Sophus::SE3Group<Scalar>& t1,
-    const Sophus::SE3Group<Scalar>& t2) {
+    const Sophus::SE3<Scalar>& t1,
+    const Sophus::SE3<Scalar>& t2) {
 
   Eigen::Matrix<Scalar, 7, 7> dt1t2_dt2;
   dt1t2_dt2.setZero();
@@ -276,8 +276,8 @@ inline Eigen::Matrix<Scalar, 7, 7> dt1t2_dt1(
 // this function implements d vee(log(A * exp(x) * B)) / dx,which is in R^{6x6}
 template<typename Scalar = double>
 inline Eigen::Matrix<Scalar, 6, 6> dLog_decoupled_dX(
-    const Sophus::SE3Group<Scalar>& a, const Sophus::SE3Group<Scalar>& b) {
-  const Eigen::Matrix<Scalar, 6, 1> d_2 = Sophus::SE3Group<Scalar>::log(
+    const Sophus::SE3<Scalar>& a, const Sophus::SE3<Scalar>& b) {
+  const Eigen::Matrix<Scalar, 6, 1> d_2 = Sophus::SE3<Scalar>::log(
       a * b.inverse()) / 2;
   const Scalar d1 = d_2[3], d2 = d_2[4], d3 = d_2[5], dx = d_2[0], dy = d_2[1],
       dz = d_2[2];
@@ -306,7 +306,7 @@ inline Eigen::Matrix<Scalar, 6, 6> dLog_decoupled_dX(
 // quaternion terms.
 template<typename Scalar = double>
 inline Eigen::Matrix<Scalar, 6, 7> dLog_dSE3(
-    const Sophus::SE3Group<Scalar>& t) {
+    const Sophus::SE3<Scalar>& t) {
   const Eigen::Matrix<Scalar, 3, 4> dw_dq = dLog_dq(t.unit_quaternion());
 
   const Scalar x = t.translation()[0];
@@ -319,14 +319,15 @@ inline Eigen::Matrix<Scalar, 6, 7> dLog_dSE3(
 
   Eigen::Matrix<Scalar, 3, 1> upsilon_omega;
   Scalar theta;
-  upsilon_omega.template tail<3>() =
-      Sophus::SO3Group<Scalar>::logAndTheta(t.so3(), &theta);
+  upsilon_omega.template tail<3>() = t.so3().logAndTheta().tangent;
+  theta = t.so3().logAndTheta().theta;
+
   const Eigen::Matrix<Scalar, 3, 3>& omega =
-      Sophus::SO3Group<Scalar>::hat(upsilon_omega.template tail<3>());
+      Sophus::SO3<Scalar>::hat(upsilon_omega.template tail<3>());
 
   // avoid division by 0
   bool close_to_zero =
-      std::abs(theta) < Sophus::SophusConstants<Scalar>::epsilon();
+      std::abs(theta) < Sophus::Constants<Scalar>::epsilon();
 
   Eigen::Matrix<Scalar, 3, 3> v_inv;
   if (close_to_zero) {

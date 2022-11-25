@@ -26,12 +26,23 @@ endif()
 
 option(BUILD_SHARED_LIBS "Build Shared Library" ON)
 
-set( CMAKE_CXX_FLAGS "-std=c++11 -Wall ${CMAKE_CXX_FLAGS}" )
+include(CheckCXXCompilerFlag)
+CHECK_CXX_COMPILER_FLAG("-std=c++17" COMPILER_SUPPORTS_CXX17)
+if(COMPILER_SUPPORTS_CXX17)
+    #set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++17")
+    set( CMAKE_CXX_FLAGS "-std=c++17 -Wall ${CMAKE_CXX_FLAGS}" )
+else()
+    message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++17 support. Please use a different C++ compiler.")
+endif()
+
+
 if(${CMAKE_CXX_COMPILER_ID} STREQUAL "Clang")
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libc++")
 endif()
 
 string( TOLOWER ${PROJECT_NAME} LIBRARY_NAME )
+
+add_definitions(-DSOPHUS_USE_BASIC_LOGGING)
 
 if (NOT ANDROID)
   add_definitions(-DBUILD_GUI)
@@ -66,7 +77,7 @@ elseif(GLUT_FOUND)
 endif()
 
 list(APPEND LINK_LIBS
-  ${HAL_LIBRARIES}
+	${HAL_LIBRARIES}
   ${Calibu_LIBRARIES}
   ${CERES_LIBRARIES}
   ${CVars_LIBRARIES}
@@ -77,8 +88,8 @@ list(APPEND LINK_LIBS
   dl)
 
 list(APPEND PROJ_INCLUDE_DIRS
-  ${Pangolin_INCLUDE_DIRS}
-  ${HAL_INCLUDE_DIRS}
+	${Pangolin_INCLUDE_DIRS}
+	${HAL_INCLUDE_DIRS}
   ${CERES_INCLUDE_DIRS}
   ${Calibu_INCLUDE_DIRS}
   ${CVars_INCLUDE_DIRS}

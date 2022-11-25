@@ -39,8 +39,8 @@ template<typename T>
 static ImuPoseT<T> IntegratePoseJet(const ImuPoseT<T>& pose,
                                     const Eigen::Matrix<T, 9, 1>& k,
                                     const T& dt) {
-  const Sophus::SO3Group<T> rv2_v1(
-      Sophus::SO3Group<T>::exp(k.template segment<3>(3) * static_cast<T>(dt)));
+  const Sophus::SO3<T> rv2_v1(
+      Sophus::SO3<T>::exp(k.template segment<3>(3) * static_cast<T>(dt)));
 
   ImuPoseT<T> y = pose;
   y.t_wp_.translation() += k.template head<3>() * static_cast<T>(dt);
@@ -230,7 +230,7 @@ static ImuPoseT<T> IntegrateResidualJet(
 /// The parameters are error state and should be a 6d pose delta
 template<typename Scalar = double>
 struct GlobalPoseCostFunction {
-  GlobalPoseCostFunction(const Sophus::SE3Group<Scalar>& measurement,
+  GlobalPoseCostFunction(const Sophus::SE3<Scalar>& measurement,
                          const double weight = 1.0)
       : t_wc(measurement),
         weight(weight) {
@@ -243,8 +243,8 @@ struct GlobalPoseCostFunction {
     CHECK_NOTNULL(t_t_wi);
     CHECK_NOTNULL(residuals);
 
-    const Eigen::Map<const Sophus::SE3Group<T> > t_ic(t_t_ic);
-    const Eigen::Map<const Sophus::SE3Group<T> > t_wi(t_t_wi);
+    const Eigen::Map<const Sophus::SE3<T> > t_ic(t_t_ic);
+    const Eigen::Map<const Sophus::SE3<T> > t_wi(t_t_wi);
     // the pose residuals
     Eigen::Map<Eigen::Matrix<T, 6, 1> > pose_residuals(residuals);
 
@@ -256,7 +256,7 @@ struct GlobalPoseCostFunction {
     return true;
   }
 
-  const Sophus::SE3Group<Scalar> t_wc;
+  const Sophus::SE3<Scalar> t_wc;
   const double weight;
 };
 
@@ -292,9 +292,9 @@ struct FullImuCostFunction {
     // parameter vector consists of a
     // 6d pose delta plus starting
     // velocity and 2d gravity angles
-    const Eigen::Map<const Sophus::SE3Group<T> > t_wx2(_tx2);
-    const Eigen::Map<const Sophus::SE3Group<T> > t_wx1(_tx1);
-    const Eigen::Map<const Sophus::SO3Group<T> > R_wx1(&_tx1[0]);
+    const Eigen::Map<const Sophus::SE3<T> > t_wx2(_tx2);
+    const Eigen::Map<const Sophus::SE3<T> > t_wx1(_tx1);
+    const Eigen::Map<const Sophus::SO3<T> > R_wx1(&_tx1[0]);
 
     // the velocity at the starting point
     const Eigen::Map<const Eigen::Matrix<T, 3, 1> > v1(_tvx1);
@@ -358,11 +358,11 @@ struct ImuReprojectionCostFunctor {
     CHECK_NOTNULL(residuals);
 
     Eigen::Map<Eigen::Matrix<T, 2, 1> > r(residuals);
-    const Eigen::Map<const Sophus::SE3Group<T> > t_wk(_t_wk);
-    const Sophus::SE3Group<T> t_kw = t_wk.inverse();
-    const Eigen::Map<const Sophus::SO3Group<T> > R_ck(_r_ck);
+    const Eigen::Map<const Sophus::SE3<T> > t_wk(_t_wk);
+    const Sophus::SE3<T> t_kw = t_wk.inverse();
+    const Eigen::Map<const Sophus::SO3<T> > R_ck(_r_ck);
     const Eigen::Map<const Eigen::Matrix<T, 3, 1> > p_ck(_t_ck);
-    const Sophus::SE3Group<T> t_ck(R_ck, p_ck);
+    const Sophus::SE3<T> t_ck(R_ck, p_ck);
 
     const Eigen::Matrix<T, 3, 1> p_cv = (t_ck * (t_kw * p_w.cast<T>()));
     Eigen::Matrix<T,2,1> z;
@@ -419,9 +419,9 @@ struct SwitchedFullImuCostFunction {
 
     // parameter vector consists of a 6d pose delta plus starting velocity
     // and 2d gravity angles
-    const Eigen::Map<const Sophus::SE3Group<T> > t_wx2(_tx2);
-    const Eigen::Map<const Sophus::SE3Group<T> > t_wx1(_tx1);
-    const Eigen::Map<const Sophus::SO3Group<T> > r_wx1(&_tx1[0]);
+    const Eigen::Map<const Sophus::SE3<T> > t_wx2(_tx2);
+    const Eigen::Map<const Sophus::SE3<T> > t_wx1(_tx1);
+    const Eigen::Map<const Sophus::SO3<T> > r_wx1(&_tx1[0]);
 
     // the velocity at the starting point
     const Eigen::Map<const Eigen::Matrix<T, 3, 1> > v1(_tvx1);

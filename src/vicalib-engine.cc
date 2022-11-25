@@ -23,6 +23,7 @@
 #include <vicalib/vicalib-engine.h>
 #include <vicalib/vicalibrator.h>
 #include <vicalib/calibration-stats.h>
+#include <opencv2/imgproc/types_c.h>
 
 static const int64_t kCalibrateAllPossibleFrames = -1;
 
@@ -403,29 +404,40 @@ void VicalibEngine::CalibrateAndDrawLoop() {
       LOG(INFO) << "Finished... " << std::endl;
       stats_->status = vicalib_->IsSuccessful() ?
           CalibrationStats::StatusSuccess : CalibrationStats::StatusFailure;
+      auto result_str = vicalib_->IsSuccessful() ?
+          "Calibration successful" : "Calibration failed";
+      LOG(INFO) << result_str << std::endl;
       vicalib_->Finish(FLAGS_output);
+      LOG(INFO) << "before write calibration" << std::endl;
       WriteCalibration();
-
+      LOG(INFO) << "after write calibration" << std::endl;
       if( FLAGS_save_poses ){
         std::ofstream file("poses.csv");
         file << "\% Pose file generated with vicalib.\n"
              << "\% Each line is the 12 elements from the top 3 rows of a 4x4"
              << "transformation matrix, printed row major.\n";
-
+        
+	LOG(INFO) << "Total frames:" <<  vicalib_->GetCalibrator().NumFrames() << std::endl;
         for( size_t ii = 0; ii < vicalib_->GetCalibrator().NumFrames(); ii++ ){
+          LOG(INFO) << "saveing pose id:"<<ii << std::endl;		
           Eigen::Matrix4d t_wk =
             vicalib_->GetCalibrator().GetFrame(ii)->t_wp_.matrix();
           file << t_wk.row(0) << "     " << t_wk.row(1)
             << "     " << t_wk.row(2) << std::endl;
         }
+	LOG(INFO) << "before close" << std::endl;
         file.close();
       }
-
+      LOG(INFO) << "exit:" << FLAGS_exit_vicalib_on_finish << std::endl;
       finished = true;
       if (FLAGS_exit_vicalib_on_finish) {
+	LOG(INFO) << "exit before"<<std::endl;      
         exit(0);
+
+	LOG(INFO) << "exit after"<<std::endl;      
       }
     }
+    LOG(INFO) << "draw vicalib" << std::endl;
     Draw(vicalib_);
 
     nanosleep(&sleep_length, NULL);
@@ -555,9 +567,9 @@ bool VicalibEngine::CameraLoop() {
 }
 
 void VicalibEngine::ImuHandler(const hal::ImuMsg& imu) {
+  
   CHECK(imu.has_accel());
   CHECK(imu.has_gyro());
-
   if(!vicalib_ || sensors_finished_) {
     return;
   }
@@ -572,7 +584,7 @@ void VicalibEngine::ImuHandler(const hal::ImuMsg& imu) {
     first_imu_time_ = FLAGS_use_system_time ? imu.system_time() :
                                               imu.device_time();
   }
-
+  
   vicalib_->AddIMU(imu);
 }
 

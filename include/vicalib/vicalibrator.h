@@ -78,7 +78,7 @@ struct VicalibFrame : public ImuPoseT<Scalar> {
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW;
   explicit VicalibFrame(const PoseT<Scalar>& pose) : ImuPoseT<Scalar>(pose) {}
 
-  VicalibFrame(const Sophus::SE3Group<Scalar>& twp,
+  VicalibFrame(const Sophus::SE3<Scalar>& twp,
                const Eigen::Matrix<Scalar, 3, 1>& v,
                const Eigen::Matrix<Scalar, 3, 1>& w, const double time)
       : ImuPoseT<Scalar>(twp, v, w, time) {}
@@ -315,9 +315,11 @@ class ViCalibrator : public ceres::IterationCallback {
 
   // Stop optimization thread.
   void Stop() {
+    LOG(INFO) << "guoqing: inside stop" << is_running_<<std::endl;
     if (is_running_) {
       should_run_ = false;
       try {
+	LOG(INFO) << "guoqing: pthread_join " << std::endl;       
         pthread_join(thread_, NULL);
       }
       catch (std::system_error) {
@@ -649,6 +651,7 @@ class ViCalibrator : public ceres::IterationCallback {
     }
 
     if (FLAGS_calibrate_imu && is_inertial_active_) {
+      LOG(INFO) << "Num of IMU cost functions:" << imu_costs_.size(); 
       for (size_t kk = 0; kk < imu_costs_.size(); ++kk) {
         calibu::CostFunctionAndParams& cost = *imu_costs_[kk];
         problem->AddResidualBlock(cost.Cost(), cost.Loss(), cost.Params());
@@ -785,8 +788,10 @@ class ViCalibrator : public ceres::IterationCallback {
 
         // Get the residuals so that we can get the Mahalanobis distance.
         Eigen::Matrix<double, 9, 1> residuals;
-        residuals.head<6>() = Sophus::SE3d::log(imu_pose.t_wp_ * t_2w);
-        residuals.tail<3>() = imu_pose.v_w_ - t_wk_[cost->index() + 1]->v_w_;
+        //residuals.head<6>() = Sophus::SE3d::log(imu_pose.t_wp_ * t_2w);
+        residuals.head<6>() = (imu_pose.t_wp_ * t_2w).log();
+
+	residuals.tail<3>() = imu_pose.v_w_ - t_wk_[cost->index() + 1]->v_w_;
 
         // Get the Mahalanobis distance given this residual.
         const double dist = residuals.transpose() * cov * residuals;
@@ -999,7 +1004,7 @@ class ViCalibrator : public ceres::IterationCallback {
             } else {
               LOG(INFO) << "Optimization Finished... " << std::endl;
               PrintResults();
-
+	      LOG(INFO) << "Print Result done!" << std::endl;	      
 // Print the covariance matrix.
 #if not defined ANDROID&& defined COMPUTE_VICALIB_COVARIANCE
               {
@@ -1008,8 +1013,9 @@ class ViCalibrator : public ceres::IterationCallback {
                   ss << string << " ";
                 }
               }
-
+	      LOG(INFO) << "Get solutoin cov" << std::endl;	
               Eigen::MatrixXd covariance = GetSolutionCovariance(problem_);
+	      LOG(INFO) << "Get solutoni cov after" << std::endl;
 #endif  // ANDROID
 
               is_finished_ = true;
