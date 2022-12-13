@@ -159,7 +159,7 @@ std::shared_ptr<VicalibTask> VicalibEngine::InitTask() {
     LOG(INFO) << "Camera " << i << " with width: " << camera_->Width(i) <<
                  " height: " << camera_->Height(i) << std::endl;
   }
-
+  
   std::vector<std::string> model_files;
   {
     std::stringstream ss(FLAGS_model_files);
@@ -184,15 +184,25 @@ std::shared_ptr<VicalibTask> VicalibEngine::InitTask() {
       <<  camera_->NumChannels() << " channels; assuming poly3";
     model_strings.resize(camera_->NumChannels(), "poly3");
   }
-
   // use model xml files, if provided
   aligned_vector<CameraAndPose> input_cameras;
   if( !model_files.empty() ){
-    for (size_t i = 0; i < model_files.size(); ++i) {
+    /*for (size_t i = 0; i < model_files.size(); ++i) {
       std::shared_ptr<calibu::Rigd> rig = calibu::ReadXmlRig(model_files[i]);
       input_cameras.emplace_back( rig->cameras_[0], Sophus::SE3d());
       LOG(INFO) << "Initalizing with user provided model file: "
         <<  model_files[i] << "\n" ;
+    }*/
+
+
+
+    for (size_t i = 0; i < model_files.size(); ++i) {
+      std::shared_ptr<calibu::Rigd> rig = calibu::ReadXmlRig(model_files[i]);
+      for (size_t i = 0; i < rig->NumCams(); i++) {
+          input_cameras.emplace_back(rig->cameras_[i], rig->cameras_[i]->Pose().inverse());
+      }
+      LOG(INFO) << "Initalizing with user provided model file: "
+        << model_files[i] << "\n";
     }
   }
   else{
@@ -293,6 +303,7 @@ std::shared_ptr<VicalibTask> VicalibEngine::InitTask() {
 
   std::vector<double> max_errors(camera_->NumChannels(),
                                  FLAGS_max_reprojection_error);
+  LOG(INFO) << "Grid:" << grid_ << ", Grid spacing:" << grid_spacing_ << std::endl;
   std::shared_ptr<VicalibTask> task(
       new VicalibTask(camera_->NumChannels(), widths, heights,
                       grid_spacing_, grid_,
@@ -371,6 +382,10 @@ void VicalibEngine::WriteCalibration() {
     }
     fclose(f);
   }
+
+  FILE* f = fopen("rmse_and_imu.txt", "w");
+  fprintf(f, "%f\n", vicalib_->GetCalibrator().GetCameraProjRMSE()[0] );
+  fclose(f);
 }
 
 void VicalibEngine::CalibrateAndDrawLoop() {
@@ -408,9 +423,7 @@ void VicalibEngine::CalibrateAndDrawLoop() {
           "Calibration successful" : "Calibration failed";
       LOG(INFO) << result_str << std::endl;
       vicalib_->Finish(FLAGS_output);
-      LOG(INFO) << "before write calibration" << std::endl;
       WriteCalibration();
-      LOG(INFO) << "after write calibration" << std::endl;
       if( FLAGS_save_poses ){
         std::ofstream file("poses.csv");
         file << "\% Pose file generated with vicalib.\n"
@@ -419,25 +432,18 @@ void VicalibEngine::CalibrateAndDrawLoop() {
         
 	LOG(INFO) << "Total frames:" <<  vicalib_->GetCalibrator().NumFrames() << std::endl;
         for( size_t ii = 0; ii < vicalib_->GetCalibrator().NumFrames(); ii++ ){
-          LOG(INFO) << "saveing pose id:"<<ii << std::endl;		
           Eigen::Matrix4d t_wk =
             vicalib_->GetCalibrator().GetFrame(ii)->t_wp_.matrix();
           file << t_wk.row(0) << "     " << t_wk.row(1)
-            << "     " << t_wk.row(2) << std::endl;
+            << "     " << t_wk.row(2) <<":"  << vicalib_->GetCalibrator().GetFrame(ii)->v_w_<<std::endl;
         }
-	LOG(INFO) << "before close" << std::endl;
         file.close();
       }
-      LOG(INFO) << "exit:" << FLAGS_exit_vicalib_on_finish << std::endl;
       finished = true;
       if (FLAGS_exit_vicalib_on_finish) {
-	LOG(INFO) << "exit before"<<std::endl;      
         exit(0);
-
-	LOG(INFO) << "exit after"<<std::endl;      
       }
     }
-    LOG(INFO) << "draw vicalib" << std::endl;
     Draw(vicalib_);
 
     nanosleep(&sleep_length, NULL);
@@ -584,7 +590,6 @@ void VicalibEngine::ImuHandler(const hal::ImuMsg& imu) {
     first_imu_time_ = FLAGS_use_system_time ? imu.system_time() :
                                               imu.device_time();
   }
-  
   vicalib_->AddIMU(imu);
 }
 

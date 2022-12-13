@@ -121,13 +121,14 @@ VicalibTask::VicalibTask(
     conic_finder_[i].Params().conic_min_density = 0.6;
     conic_finder_[i].Params().conic_min_aspect = 0.2;
   }
-
+  LOG(INFO) << "num of stream:" << num_streams;
   if (FLAGS_clip_good) {
     logger_.LogToFile("", "good_tracking");
   }
   calibrator_.FixCameraIntrinsics(fix_intrinsics);
   input_imu_biases_ = calibrator_.GetBiases();
 
+  LOG(INFO) << "input camera;" << input_cameras.size();
   for (size_t ii = 0; ii < num_streams; ++ii) {
     const int w_i = width[ii];
     const int h_i = height[ii];
@@ -286,7 +287,12 @@ void VicalibTask::AddImageMeasurements(const std::vector<bool>& valid_frames) {
       img_message->set_height(img->Height());
       img_message->set_width(img->Width());
       cv::Mat image(img->Height(), img->Width(), CV_8UC1);
+      
       memcpy(img->Mat().data, image.data, img->Height()*img->Width());
+	//cv::imshow("some", image);
+	//cv::waitKey(); 
+      
+
       img_message->set_data(image.data, img->Height()*img->Width());
       img_message->set_format( hal::PB_LUMINANCE );
       img_message->set_type( hal::PB_UNSIGNED_BYTE );
@@ -337,7 +343,6 @@ void VicalibTask::AddImageMeasurements(const std::vector<bool>& valid_frames) {
     return;
   }
   calib_frame_ = AddFrame(current_frame_time_);
-
   for (size_t ii = 0; ii < n; ++ii) {
     if (tracking_good_[ii]) {
       if (calib_frame_ >= 0) {
@@ -346,8 +351,11 @@ void VicalibTask::AddImageMeasurements(const std::vector<bool>& valid_frames) {
           // this needs to be T_wh which is why we invert
           calibrator_.GetFrame(calib_frame_)->t_wp_ = t_cw_[ii].inverse()
               * calibrator_.GetCamera(ii).T_ck;
+	  LOG(INFO) << "cw inv:" << t_cw_[ii].inverse().matrix();
+	  LOG(INFO) << "T_ck:" << calibrator_.GetCamera(ii).T_ck.matrix();
+	  LOG(INFO) << "Pose:" << calibrator_.GetFrame(calib_frame_)->t_wp_.matrix();
         }
-
+        
         for (size_t p = 0; p < ellipses[ii].size(); ++p) {
           const Eigen::Vector2d pc = ellipses[ii][p];
           const Eigen::Vector2i pg = target_[ii].Map()[p].pg;

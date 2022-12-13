@@ -38,7 +38,8 @@ namespace visual_inertial_calibration {
 
 // Shortcut for calibration provider gravity magnitude
 inline double gravity() {
-  return 9.8007;  // m/s^2
+  // gravity needs to be recalcuated based on locatoin	
+  return 9.8199;  // m/s^2
 }
 
 // Represents a 6-DOF position for a "rig" of multiple cameras.
@@ -94,12 +95,15 @@ template<typename Scalar>
 static Eigen::Matrix<Scalar, 3, 1> GetGravityVector(
     const Eigen::Matrix<Scalar, 2, 1>& dir,
     Scalar g ) {
+  	
   Scalar sp = sin(dir[0]);
   Scalar cp = cos(dir[0]);
   Scalar sq = sin(dir[1]);
   Scalar cq = cos(dir[1]);
   Eigen::Matrix<Scalar, 3, 1> vec(cp * sq, -sp, cp * cq);
   vec *= -g;
+
+  
   return vec;
 }
 

@@ -211,13 +211,13 @@ class ViCalibrator : public ceres::IterationCallback {
     for (size_t c = 0; c < cameras_.size(); ++c) {
       // Rdfrobotics.inverse is multiplied so that T_ck does not bake
       // the robotics (imu) to vision coordinate transform d
-      if (FLAGS_calibrate_imu) {
+      /*if (FLAGS_calibrate_imu) {
         cameras_[c]->camera->SetRDF(calibu::RdfRobotics.matrix());
         cameras_[c]->camera->SetPose(cameras_[c]->T_ck.inverse() *
                     Sophus::SE3d(calibu::RdfRobotics.inverse(),
                                  Eigen::Vector3d::Zero()));
         rig->AddCamera(cameras_[c]->camera);
-      } else {
+      } else*/ {
         // The RDF must be set to identity (computer vision).
         cameras_[c]->camera->SetRDF(calibu::RdfVision.matrix());
         cameras_[c]->camera->SetPose(cameras_[c]->T_ck.inverse());
@@ -315,11 +315,9 @@ class ViCalibrator : public ceres::IterationCallback {
 
   // Stop optimization thread.
   void Stop() {
-    LOG(INFO) << "guoqing: inside stop" << is_running_<<std::endl;
     if (is_running_) {
       should_run_ = false;
       try {
-	LOG(INFO) << "guoqing: pthread_join " << std::endl;       
         pthread_join(thread_, NULL);
       }
       catch (std::system_error) {
@@ -550,9 +548,11 @@ class ViCalibrator : public ceres::IterationCallback {
   void SetupProblem(const std::shared_ptr<ceres::Problem>& problem) {
     covariance_params_.clear();
     covariance_names_.clear();
-    projection_residuals_.clear();
-    projection_residuals_.resize(cameras_.size());
-
+    
+    if (!outliers_removed_) {
+    	projection_residuals_.clear();
+    	projection_residuals_.resize(cameras_.size());
+    }
     pthread_mutex_lock(&update_mutex_);
 
     // Add parameters
@@ -640,14 +640,22 @@ class ViCalibrator : public ceres::IterationCallback {
     }
 
     // Add costs
-    if (is_visual_active_) {
+    if (is_visual_active_ && !outliers_removed_) {
       for (size_t jj = 0; jj < cameras_.size(); ++jj) {
+        LOG(INFO) << "Num of Cost added for camera " <<  jj << ":" << proj_costs_[jj].size() << std::endl;
         for (size_t kk = 0; kk < proj_costs_[jj].size(); ++kk) {
           calibu::CostFunctionAndParams& cost = *(proj_costs_[jj][kk]);
           projection_residuals_[jj].push_back(problem->AddResidualBlock(
               cost.Cost(), cost.Loss(), cost.Params()));
         }
       }
+    } else {
+	if (outliers_removed_) {
+	  LOG(INFO) << "Use the rest of projection residuals after outlier removed";  	
+	  for (size_t jj = 0; jj < cameras_.size(); ++jj) {
+            LOG(INFO) << "Num of Cost added for camera " <<  jj << ":" << projection_residuals_[jj].size() << std::endl;
+	  }
+	}
     }
 
     if (FLAGS_calibrate_imu && is_inertial_active_) {
@@ -795,8 +803,8 @@ class ViCalibrator : public ceres::IterationCallback {
 
         // Get the Mahalanobis distance given this residual.
         const double dist = residuals.transpose() * cov * residuals;
-        LOG(INFO) << "Mahalanobis distance for res: " << ii << " is " << dist
-                  << ", chi2inv(0.95, 9) = 16.9190";
+	//LOG(INFO) << "Mahalanobis distance for res: " << ii << " is " << dist
+        //          << ", chi2inv(0.95, 9) = 16.9190," << "velocity" << t_wk_[cost->index() + 1]->v_w_ ;
 
         cost->cost_functor()->weight_sqrt_ = cov.sqrt();
       }
@@ -894,6 +902,7 @@ class ViCalibrator : public ceres::IterationCallback {
         // check of reproject error exceeds threshold
         if (error > threshold)
         {
+          LOG(INFO) << "removed outlier:" << kk << "x,y,error" << x<<","<<y<<","<<error<<std::endl;		
           outliers[ii].push_back(projection_residuals_[ii][kk]);
         }
         else
@@ -904,6 +913,7 @@ class ViCalibrator : public ceres::IterationCallback {
     }
 
     // remove outlier residuals blocks for each camera
+    LOG(INFO)<< "before removal:" << projection_residuals_[0].size() << std::endl;
     for (size_t ii = 0; ii < outliers.size(); ++ii)
     {
       LOG(INFO) << "Removing " << outliers[ii].size() << "/" <<
@@ -918,14 +928,33 @@ class ViCalibrator : public ceres::IterationCallback {
 
       projection_residuals_ = inliers;
     }
+
+    LOG(INFO)<< "after removal:" << projection_residuals_[0].size() << std::endl;
   }
 
   // Runs the optimization in a background thread.
   void SolveThread() {
     is_running_ = true;
-
+    bool show_init_value = true;
+    int counter  = 0;
     while (should_run_ && !is_finished_) {
+      counter = counter +1 ;	    
+      LOG(INFO) << ">>>>>>>>>>>>>> Optimization start >>>>>>>>>>>>>>>>";	    
       SetupProblem(problem_);
+
+      if (show_init_value) {
+      	LOG(INFO) << "*****************Initial Parameters value:****************" << std::endl;
+      	PrintResults();
+      	LOG(INFO) << "bw_ba= " << biases_.transpose() << std::endl;
+      	LOG(INFO) << "sfw_sfa= " << scale_factors_.transpose() << std::endl;
+      	LOG(INFO) << "G= " << imu_.g_.transpose() << std::endl;
+     	 LOG(INFO) << "Eestimated gravity is: "
+                  << GetGravityVector(imu_.g_, gravity()).transpose();
+
+      	LOG(INFO) << "ts= " << imu_.time_offset_ << std::endl;
+      	LOG(INFO) << "***************************************************" << std::endl;
+        show_init_value = false;
+      }
 
       // Attempt to estimate the gravity vector if inertial constraints
       // are active.
@@ -937,7 +966,9 @@ class ViCalibrator : public ceres::IterationCallback {
         const Eigen::Vector3d g_b = meas.a_.normalized();
         // Rotate gravity into the world frame.
         const Eigen::Vector3d g_w = frame->t_wp_.so3() * g_b;
-        // Calculate the roll/pitch angles.
+        LOG(INFO) << "unormalized body accel:" << meas.a_;
+	LOG(INFO) << "t_wp:" << frame->t_wp_.so3().matrix();
+	// Calculate the roll/pitch angles.
         LOG(INFO) << "Body accel: " << g_b.transpose()
                   << " world accel: " << g_w.transpose();
 
@@ -966,15 +997,45 @@ class ViCalibrator : public ceres::IterationCallback {
             options.residual_blocks = projection_residuals_[ii];
             options.apply_loss_function = false;
             double cost;
-            problem_->Evaluate(options, &cost, nullptr, nullptr, nullptr);
+	    std::vector<double> residuals;
+	    problem_->Evaluate(options, &cost, &residuals, nullptr, nullptr);
             camera_proj_rmse_[ii] =
                 sqrt(cost / (projection_residuals_[ii].size()));
 
             LOG(INFO) << "Reprojection error for camera " << ii << ": "
                       << sqrt(cost) << " rmse: " << camera_proj_rmse_[ii]
                       << std::endl;
+            //LOG(INFO) << "Camera " << ii << " frame size :" << projection_residuals_[ii].size(); 		
+	    
+	    std::ofstream file("reprojection_error"+std::to_string(counter)+".csv");
+	    LOG(INFO) << "projection_residuals size:" << projection_residuals_[ii].size();
+	    for (size_t iii = 0; iii < projection_residuals_[ii].size(); ++iii) {
+	    	const double x = residuals[2 * iii + 0];
+        	const double y = residuals[2 * iii + 1];
+       		const double error = sqrt(x * x + y * y);
+		//LOG(INFO) << "Reprojection error of " << std::to_string(counter) << ", observation: " << iii << ": " << x << "," << y << ","<< error << std::endl;
+		file << x << "," << y << "," << error << std::endl;
+	    }
+	    file.close();
           }
 
+	  LOG(INFO) << "*****************" << counter << ":Intermedia Parameters value:****************" << std::endl;
+	  PrintResults();
+	  LOG(INFO) << "bw_ba= " << biases_.transpose() << std::endl;
+          LOG(INFO) << "sfw_sfa= " << scale_factors_.transpose() << std::endl;
+          LOG(INFO) << "G= " << imu_.g_.transpose() << std::endl;
+          LOG(INFO) << "Eestimated gravity is: "
+                  << GetGravityVector(imu_.g_, gravity()).transpose();
+
+	  LOG(INFO) << "ts= " << imu_.time_offset_ << std::endl;
+	  
+	  //LOG(INFO) << "Frames (t_wk_) size:"<< t_wk_.size() << std::endl;
+	  //for (size_t ii = 0; ii < t_wk_.size(); ii++) {
+	  //   LOG(INFO) << t_wk_[ii]->t_wp_.matrix() << "," << t_wk_[ii]->v_w_;
+	  //}
+	  
+	  LOG(INFO) << "***************************************************" << std::endl;
+          		
           LOG(INFO) << summary.FullReport() << std::endl;
 
           mse_ = summary.final_cost / summary.num_residuals;
@@ -989,7 +1050,7 @@ class ViCalibrator : public ceres::IterationCallback {
                            "translation optimization..." << std::endl;
               optimize_rotation_only_ = false;
               problem_->SetParameterBlockVariable(imu_.g_.data());
-            // } else if (!is_bias_active_) {
+            //} else if (!is_bias_active_) {
               is_bias_active_ = true;
               LOG(INFO) << "Activating bias terms... " << std::endl;
               problem_->SetParameterBlockVariable(biases_.data());
@@ -1024,6 +1085,10 @@ class ViCalibrator : public ceres::IterationCallback {
             LOG(INFO) << "bw_ba= " << biases_.transpose() << std::endl;
             LOG(INFO) << "sfw_sfa= " << scale_factors_.transpose() << std::endl;
             LOG(INFO) << "G= " << imu_.g_.transpose() << std::endl;
+	    LOG(INFO) << "Eestimated gravity is: "
+                  << GetGravityVector(imu_.g_, gravity()).transpose();
+
+
             LOG(INFO) << "ts= " << imu_.time_offset_ << std::endl;
             break;
           } else if (summary.termination_type != ceres::NO_CONVERGENCE) {
