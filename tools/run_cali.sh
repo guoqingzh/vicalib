@@ -30,5 +30,5 @@ else
     echo "Calibrate without initial value..."	
 fi
 
-./vicalib -grid-preset small '$model_str' -output rs.xml -accel_sigma 0.1 -gyro_sigma 0.05   -save_poses -remove_outliers -cam realsense2:[id0=046322251955,size=$res,fps=$fps,rgb=1,depth=0,ir0=0,ir1=0,emitter=0.462,exposure=0,gain=64]// -imu rs2imu:[id0=046322251955]// 2>&1 | tee log
+./vicalib -grid-preset small '$model_str' -output rs.xml -accel_sigma 0.1 -gyro_sigma 0.05   -save_poses -remove_outliers -cam realsense2:[id0=046322251955,size=$res,fps=$fps,rgb=1,depth=0,ir0=0,ir1=0,emitter=0.462,exposure=0,gain=64]// -imu rs2imu:[id0=046322251955]// --logtostderr=1 2>&1 | tee log
 python3 checker.py $init
