@@ -26,7 +26,7 @@
 // #define COMPUTE_VICALIB_COVARIANCE
 
 #include <memory>
-#include <pthread.h>
+#include <thread>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -261,13 +261,9 @@ class ViCalibrator : public ceres::IterationCallback {
 
   // Start optimization thread to modify intrinsic / extrinsic parameters.
   void Start() {
-    pthread_attr_init(&thread_attr_);
-    pthread_attr_setdetachstate(&thread_attr_, PTHREAD_CREATE_JOINABLE);
-
     if (!is_running_) {
       should_run_ = true;
-      pthread_create(&thread_, &thread_attr_, &ViCalibrator::SolveThreadStatic,
-                     this);
+      thread_ = std::thread(ViCalibrator::SolveThreadStatic, this);
     } else {
       LOG(WARNING) << "Already Running." << std::endl;
     }
@@ -315,10 +311,11 @@ class ViCalibrator : public ceres::IterationCallback {
 
   // Stop optimization thread.
   void Stop() {
-    if (is_running_) {
+    if (thread_.joinable()) {
       should_run_ = false;
       try {
-        pthread_join(thread_, NULL);
+	  LOG(INFO) << "Join calibration thread";    
+          thread_.join();	      
       }
       catch (std::system_error) {
         // thread already died.
@@ -354,14 +351,13 @@ class ViCalibrator : public ceres::IterationCallback {
   // camera extrinsics equal between all cameras for each frame.
   int AddFrame(const Sophus::SE3d& t_wk, double time) {
     CHECK(!is_running_);
-    pthread_mutex_lock(&update_mutex_);
+    std::lock_guard<std::mutex> lock(update_mutex_);
     int id = t_wk_.size();
     VicalibFrame<double> pose(t_wk, Eigen::Vector3d::Zero(),
                               Eigen::Vector3d::Zero(), time);
 
     t_wk_.push_back(
         std::shared_ptr<VicalibFrame<double> >(new VicalibFrame<double>(pose)));
-    pthread_mutex_unlock(&update_mutex_);
 
     return id;
   }
@@ -386,8 +382,7 @@ class ViCalibrator : public ceres::IterationCallback {
                       const Eigen::Vector3d& p_w, const Eigen::Vector2d& p_c,
                       double time) {
     CHECK(!is_running_);
-    pthread_mutex_lock(&update_mutex_);
-
+    std::lock_guard<std::mutex> lock(update_mutex_);
     // Ensure index is valid
     while (NumFrames() < frame) {
       AddFrame(Sophus::SE3d(), time);
@@ -464,7 +459,6 @@ class ViCalibrator : public ceres::IterationCallback {
     proj_costs_[camera_id]
         .push_back(std::unique_ptr<calibu::CostFunctionAndParams>(cost));
 
-    pthread_mutex_unlock(&update_mutex_);
   }
 
   // Return number of synchronised camera rig frames.
@@ -553,8 +547,7 @@ class ViCalibrator : public ceres::IterationCallback {
     	projection_residuals_.clear();
     	projection_residuals_.resize(cameras_.size());
     }
-    pthread_mutex_lock(&update_mutex_);
-
+    std::lock_guard<std::mutex> lock(update_mutex_);
     // Add parameters
     std::stringstream css;
     for (size_t c = 0; c < cameras_.size(); ++c) {
@@ -686,7 +679,6 @@ class ViCalibrator : public ceres::IterationCallback {
         problem->SetParameterBlockConstant(&imu_.time_offset_);
       }
     }
-    pthread_mutex_unlock(&update_mutex_);
   }
 
   // Entry point for background solver thread.
@@ -1110,9 +1102,8 @@ class ViCalibrator : public ceres::IterationCallback {
     is_running_ = false;
   }
 
-  pthread_mutex_t update_mutex_ = PTHREAD_MUTEX_INITIALIZER ;
-  pthread_attr_t thread_attr_;
-  pthread_t thread_;
+  std::mutex update_mutex_;
+  std::thread thread_;
   bool should_run_;
   bool is_running_;
 
