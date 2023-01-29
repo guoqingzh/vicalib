@@ -441,7 +441,7 @@ void VicalibEngine::CalibrateAndDrawLoop() {
       }
       finished = true;
       if (FLAGS_exit_vicalib_on_finish) {
-        exit(0);
+	break;
       }
     }
     Draw(vicalib_);

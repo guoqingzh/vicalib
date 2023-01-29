@@ -66,6 +66,8 @@ find_package(OpenCV REQUIRED COMPONENTS core imgproc videoio)
 endif()
 find_package( Pangolin REQUIRED )
 
+message(STATUS ${CVars_LIBRARIES} ${CVars_INCLUDE_DIRS})
+
 # Prefer OSX_MODIFIED_GLUT > FREEGLUT > GLUT
 if(FREEGLUT_FOUND AND NOT HAVE_MODIFIED_OSXGLUT)
   set(HAVE_FREEGLUT 1)
